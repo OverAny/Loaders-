@@ -14,6 +14,9 @@ import numpy as np
 import torch
 import torch.utils.data as data
 from torchvision import transforms
+from nltk.tokenize import TweetTokenizer
+from nltk.tokenize import RegexpTokenizer
+from collections import defaultdict
 
 FILE_DIR = os.path.realpath(os.path.dirname(__file__))
 RAW_DIR = os.path.join(FILE_DIR, 'data')
@@ -23,7 +26,9 @@ SOS_TOKEN = '<sos>'
 EOS_TOKEN = '<eos>'
 PAD_TOKEN = '<pad>'
 UNK_TOKEN = '<unk>'
+
 def process_texts(self, texts):
+    print("process_texts")
     inputs, targets, lengths, positions = [], [], [], []
 
     n = len(texts)
@@ -36,8 +41,11 @@ def process_texts(self, texts):
         # all lowercase
         text = texts[i].lower()
         # text = texts[i].translate(str.maketrans('', '', string.punctuation))
-
-        tokens = word_tokenize(text)
+        # tknzr = TweetTokenizer()
+        tokenizer = RegexpTokenizer('\w+|\$[\d\.]+|\S+')
+        tokens = tokenizer.tokenize(text)
+        # tokens = tknzr.tokenize(text)
+        # tokens = word_tokenize(text)
         input_tokens = [SOS_TOKEN] + tokens
         target_tokens = tokens + [EOS_TOKEN]
         assert len(input_tokens) == len(target_tokens)
@@ -107,7 +115,10 @@ def load_item_id_to_utterance_map():
 
     # df = df[df['outcome'] == "true"]
     # item = np.asarray(df['selected_item'])
-    text = df['contents']
+    texts = df['contents']
+    textsList = []
+    for text in texts:
+        textsList.append(text)
     # clickColH,clickColS,clickColL
     itemH,itemS,itemL,itemText = [], [], [], []
     for counter,outcome in enumerate(df['outcome']):
@@ -115,16 +126,77 @@ def load_item_id_to_utterance_map():
             itemH.append(df['clickColH'][counter])
             itemS.append(df['clickColS'][counter])
             itemL.append(df['clickColL'][counter])
-            itemText.append(text[counter])
-    colorsToText = {hsl2rgb([itemH[i], itemS[i]/100, itemL[i]/100]):text[i] for i in range(len(itemH))}
-    textToColor = {text[i]:hsl2rgb([itemH[i], itemS[i]/100, itemL[i]/100]) for i in range(len(itemH))}
+            itemText.append(texts[counter])
+    colorsToText = {hsl2rgb([itemH[i], itemS[i]/100, itemL[i]/100]):texts[i] for i in range(len(itemH))}
+    textToColor = {texts[i]:hsl2rgb([itemH[i], itemS[i]/100, itemL[i]/100]) for i in range(len(itemH))}
 
     print(" ")
-    print(colorsToText)
-    print(textToColor)
-
+    #print(colorsToText)
+    #print(textToColor)
+    build_vocab(textsList)
     return colorsToText, textToColor
 
+def build_vocab(texts):
+    # print("texts: "+ texts)
+    vocab = defaultdict(list)
+    i2w, w2i = {},{}
+    cutoff = int(len(texts) * 0.64)
+    indexCount = 0
+
+    for text in texts[cutoff]:
+        print('text: ' + text)
+        tokens = preprocess_text(text)
+        for token in tokens:
+            print('token: ' + token)
+            if (token not in w2i.keys()):
+                w2i[token] = indexCount
+                i2w[indexCount] = token
+                indexCount += 1
+    w2i[SOS_TOKEN] = indexCount+1
+    w2i[EOS_TOKEN] = indexCount+2
+    w2i[UNK_TOKEN] = indexCount+3
+    w2i[PAD_TOKEN] = indexCount+4
+    i2w[indexCount+1] = SOS_TOKEN
+    i2w[indexCount+2] = EOS_TOKEN
+    i2w[indexCount+3] = UNK_TOKEN
+    i2w[indexCount+4] = PAD_TOKEN
+
+    vocab = {'i2w': i2w, 'w2i': w2i}
+    print(vocab)
+    print("done vocab")
+    return vocab
+
+def preprocess_text(text):
+        print("text to tokenize: " + text)
+        text = text.lower() 
+        tokens = word_tokenize(text)
+        i = 0
+        while i < len(tokens):
+            if tokens[i].endswith('er'):
+                tokens[i] = tokens[i][:-2]
+                i += 1
+                tokens.insert(i+1, 'er')
+            if tokens[i].endswith('est'):
+                tokens[i] = tokens[i][:-3]
+                i += 1
+                tokens.insert(i+1, 'est')
+            if tokens[i].endswith('ish'):
+                tokens[i] = tokens[i][:-3]
+                i += 1
+                tokens.insert(i+1, 'est')
+            i += 1
+            #shouldnt it be whit? ca -- > can
+        replace = {'redd':'red', 'gren': 'green', 'whit':'white', 'biege':'beige', 'purp':'purple', 'olve':'olive', 'ca':'can'}
+        for i in range(len(tokens)):
+            if tokens[i] in replace.keys():
+                tokens[i] = replace[tokens[i]]
+        print('tokenized result: ')
+        print(tokens)
+        return tokens
+            
+    
+            
+            
 #3calling wont work
 load_item_id_to_utterance_map()
 
